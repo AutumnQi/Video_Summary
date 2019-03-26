@@ -10,7 +10,6 @@ import imutils
 import sys
 import json
 
-
 from typing import Tuple
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
@@ -32,6 +31,7 @@ def find_index_list(index_heap, length, num_peak):
     cover_index = item[1]
 
     while final_l.__len__() < num_peak:
+        print(item)
         index = item[1]
         if hash_index[index // span] == 0 and index > 75 // num_peak and index < length - 75 // num_peak:
             flag = True
@@ -41,7 +41,6 @@ def find_index_list(index_heap, length, num_peak):
             if flag:
                 final_l.append(index)
                 hash_index[index // span] = 1
-                print(item)
         item = index_heap.pop()
 
     final_l.sort()
@@ -49,30 +48,28 @@ def find_index_list(index_heap, length, num_peak):
     print(final_l)
     return final_l, cover_index
 
-# def staticSaliency(frame):
-#
-#     (success, saliencyMap) = stasaliency.computeSaliency(frame)
-#     threshMap = cv2.threshold(saliencyMap.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-#     # cv2.imshow("staticMap", saliencyMap)
-#     # cv2.imshow("Thresh", threshMap)
-#     return np.sum(threshMap) / (threshMap.shape[0] * threshMap.shape[1] * 255)
-#
-# def foreground(frame):
-#     fgmask=fgbg.apply(frame)
-#     fgmask=cv2.morphologyEx(fgmask,cv2.MORPH_OPEN,kernel)
-#     fgmask = cv2.threshold(fgmask.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-#
-#     # cv2.imshow("fgmask",fgmask)
-#     return np.sum(fgmask) / (fgmask.shape[0] * fgmask.shape[1] * 255)
+def staticSaliency(frame):
+
+    (success, saliencyMap) = stasaliency.computeSaliency(frame)
+    threshMap = cv2.threshold(saliencyMap.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+    # cv2.imshow("staticMap", saliencyMap)
+    # cv2.imshow("Thresh", threshMap)
+    return np.sum(threshMap) / (threshMap.shape[0] * threshMap.shape[1] * 255)
+
+def foreground(frame):
+    fgmask=fgbg.apply(frame)
+    fgmask=cv2.morphologyEx(fgmask,cv2.MORPH_OPEN,kernel)
+    fgmask = cv2.threshold(fgmask.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+
+    # cv2.imshow("fgmask",fgmask)
+    return np.sum(fgmask) / (fgmask.shape[0] * fgmask.shape[1] * 255)
 
 def main(video_name):
 
-    output_folder = "./test_output_Obj_mp4/" + str(video_name) + '/'
+    output_folder = "./test_output_Obj&Motion/"
     video_path = "./video/"
     video = video_path + video_name + '.mp4'
-    num_peak = 7
-
-    cover = output_folder + 'cover_' + video_name + '.jpeg'
+    summary = output_folder + 'Sum_' + video_name + '.avi'
 
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
@@ -91,14 +88,11 @@ def main(video_name):
         shape = (int(cap.get(3)),int(cap.get(4)))
         fps = cap.get(cv2.CAP_PROP_FPS)
         length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if length<350:
-            num_peak = 5
-        summary = output_folder + 'Sum_' + str(num_peak) + '_' + video_name + '.mp4'
-        #ret, image = cap.read()
-        #print(shape)
+        ret, image = cap.read()
+        print(shape)
         index_heap = MaxHeap()
 
-        print('=====================Start Analysis=====================\n' + 'The Length of vedio' + video_name + ' is: ' + str(length))
+        print('=====================Start Analysis=====================\n' + 'The Length of vedio is: ' + str(length))
 
         #file = open(output_folder + video_name + '.json', 'w')
         if cap.isOpened():
@@ -119,9 +113,13 @@ def main(video_name):
                 pred_alpha = sess.run(pred_mattes, feed_dict=feed_dict)
                 final_alpha = misc.imresize(np.squeeze(pred_alpha), origin_shape)
                 #显著度最高为255,最低为0,归一化
-                result = np.sum(final_alpha/255) / (final_alpha.shape[0] * final_alpha.shape[1])
+                objSal = np.sum(final_alpha/255) / (final_alpha.shape[0] * final_alpha.shape[1])
 
-                index_heap.add((result, m))
+
+                # staSal = staticSaliency(image)
+                # moSal = foreground(image)
+
+                index_heap.add((objSal, m))
 
                 # result_dict = {'objSal': result}
                 # jsObj = json.dumps(result_dict)
@@ -131,16 +129,11 @@ def main(video_name):
 
             # Find the largest n peaks
 
-            final_frame, cover_index = find_index_list(index_heap, length, num_peak)
-
-            print('=====================Extract Cover====================')
-            cap.set(cv2.CAP_PROP_POS_FRAMES, cover_index)
-            ret, image = cap.read()
-            cv2.imwrite(cover, image)
-
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            num_peak = 5
+            final_frame = find_index_list(index_heap, length, num_peak)
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
             videowriter = cv2.VideoWriter(summary, fourcc, fps, shape)
-            print('=====================Make Summary====================')
+            print('=====================Start making Summary====================')
             for frame in final_frame:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame-75//num_peak)
                 for i in range(150//num_peak):
@@ -224,23 +217,6 @@ class MaxHeap(object):
 
 
 
-
-# def parse_arguments(argv):
-#     parser = argparse.ArgumentParser()
-#
-#     parser.add_argument('--video_path', type=str,
-#                         help='input video file path', default=None)
-#     return parser.parse_args(argv)
-#
-#
-# if __name__ == '__main__':
-#     args = parse_arguments(sys.argv[1:])
-#     video_path = args.video_path
-#     for video in os.listdir(video_path):
-#         video_name = os.path.splitext(video)[0]
-#         main(video_name)
-
-
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
 
@@ -253,5 +229,4 @@ if __name__ == '__main__':
     args = parse_arguments(sys.argv[1:])
     video_name = args.video_name
     main(video_name)
-
 
